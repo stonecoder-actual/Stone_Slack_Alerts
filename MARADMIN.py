@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """MARADMIN checker -> OpenAI summary -> Slack (refined rules)
 
-This is your MARADMIN alert script, upgraded with the refinements we developed.
+MARADMIN alert script with refined summarization rules.
 
 Summary behavior
 - Promotion lists / selected lists / name lists:
@@ -13,9 +13,9 @@ Summary behavior
     * One-liner + key dates only
 - Board results:
     * 1–2 bullets, tell you to read for names
-- 17XX / your MOS focus (1701/1702/1710/1720/1721):
+- 17XX / MOS focus (1701/1702/1710/1720/1721):
     * Full actionable summary (deadlines, eligibility, actions)
-- Not 17XX but relevant to your interests (AI/cyber/space/innovation):
+- Not 17XX but relevant to configured interests (AI/cyber/space/innovation):
     * 1–3 bullets, tagged FYI—Not 17XX
 - Everything else:
     * 1 bullet + link
@@ -62,13 +62,13 @@ SLACK_MAX_CHARS = 35000  # buffer under Slack's max
 
 
 # ----------------------------
-# Your refined priorities
+# Refined priorities
 # ----------------------------
 
-# Your “important MOSs”
+# High-priority MOSs
 HIGH_MOS: Set[str] = {"1701", "1702", "1710", "1720", "1721"}
 
-# Your priority interest topics (allow short FYI summaries even if not 17XX)
+# Priority interest topics (allow short FYI summaries even if not 17XX)
 PRIORITY_TOPICS = [
     # AI/ML
     "artificial intelligence",
@@ -323,7 +323,7 @@ def classify_maradmin(title: str, body: str) -> str:
 
 
 def choose_summary_mode(category: str, title: str, body: str) -> Dict[str, Any]:
-    """Decide summary mode + bullet count based on your refined preferences."""
+    """Decide summary mode + bullet count based on configured preferences."""
     text = f"{title}\n{body}"
     is_17xx, _high_hits = mos_relevance(text)
     is_priority_topic = contains_any(text, PRIORITY_TOPICS)
@@ -351,64 +351,82 @@ def extract_maradmin_number(title: str, body: str) -> Optional[str]:
 # OpenAI summary
 # ----------------------------
 
+def env_or_default(name: str, default: str) -> str:
+    value = os.getenv(name, '').strip()
+    return value if value else default
+
+
+def format_prompt(template: str, **kwargs: Any) -> str:
+    try:
+        return template.format(**kwargs)
+    except Exception:
+        return template
+
+
 def build_llm_instructions(mode: str, bullets: int) -> str:
-    base = (
-        "You summarize USMC MARADMINS for a Cyberspace Officer.\n"
+    base_default = (
+        "You summarize USMC MARADMINS for a cyber operations audience.\n"
         "Output ONLY bullet points (no headings, no intro).\n"
         "Do NOT invent details; use only the provided text. If unknown, say 'Not stated'.\n"
         "Keep bullets tight: 1 sentence where possible, max 2 sentences.\n"
         "Prefer concrete dates/deadlines and required actions.\n"
     )
+    base = env_or_default('MARADMIN_PROMPT_BASE', base_default)
 
-    if mode == "read_asap":
-        return (
+    if mode == 'read_asap':
+        prompt_default = (
             base
-            + f"Provide 1–{bullets} bullets MAX.\n"
+            + f"Provide 1-{bullets} bullets MAX.\n"
             "This is a PROMOTION/SELECTION LIST with names.\n"
             "- Do NOT summarize or list names.\n"
-            "- MUST include 'READ ASAP — name list inside.'\n"
+            "- MUST include 'READ ASAP - name list inside.'\n"
             "Focus on: what rank(s), what population (Active/AR/Reserve), what month/timeframe, and any admin notes.\n"
         )
+        return format_prompt(env_or_default('MARADMIN_PROMPT_READ_ASAP', prompt_default), bullets=bullets)
 
-    if mode == "dates_only":
-        return (
-			base
-			+ 
-            "This is a promotion selection board schedule / dates message.\n"
+    if mode == 'dates_only':
+        prompt_default = (
+            base
+            + "This is a promotion selection board schedule / dates message.\n"
             "- First bullet: a one-sentence summary.\n"
             "- Remaining bullets: key dates only (board correspondence due dates and convening dates).\n"
-            f"Provide up to {bullets} bullets total.\n"
+            + f"Provide up to {bullets} bullets total.\n"
             "No extra commentary.\n"
         )
+        return format_prompt(env_or_default('MARADMIN_PROMPT_DATES_ONLY', prompt_default), bullets=bullets)
 
-    if mode == "brief_results":
-        return (
+    if mode == 'brief_results':
+        prompt_default = (
             base
-            + f"Provide 1–{bullets} bullets MAX.\n"
+            + f"Provide 1-{bullets} bullets MAX.\n"
             "This is BOARD RESULTS.\n"
             "- Do NOT summarize names.\n"
             "- Tell the reader to open/read the MARADMIN for names.\n"
         )
+        return format_prompt(env_or_default('MARADMIN_PROMPT_BRIEF_RESULTS', prompt_default), bullets=bullets)
 
-    if mode == "fyi_not_17xx":
-        return (
+    if mode == 'fyi_not_17xx':
+        prompt_default = (
             base
-            + f"Provide 1–{bullets} bullets MAX.\n"
-            "Tag the first bullet with 'FYI—Not 17XX'.\n"
+            + f"Provide 1-{bullets} bullets MAX.\n"
+            "Tag the first bullet with 'FYI-Not 17XX'.\n"
             "Focus on: what it is, who it applies to, and any deadline/timeline.\n"
         )
+        return format_prompt(env_or_default('MARADMIN_PROMPT_FYI_NOT_17XX', prompt_default), bullets=bullets)
 
-    if mode == "minimal":
-        return base + "Provide exactly 1 bullet.\n"
+    if mode == 'minimal':
+        prompt_default = base + "Provide exactly 1 bullet.\n"
+        return format_prompt(env_or_default('MARADMIN_PROMPT_MINIMAL', prompt_default), bullets=bullets)
 
     # full_17xx
-    return (
+    prompt_default = (
         base
-        + f"Provide 4–{bullets} bullets.\n"
+        + f"Provide 4-{bullets} bullets.\n"
         "This MARADMIN is relevant to 17XX / MOS 1701/1702/1710/1720/1721.\n"
         "If the MARADMIN lists multiple MOSs, only include details relevant to 17XX / those MOSs.\n"
         "Emphasize deadlines/timelines, eligibility, and required actions.\n"
     )
+    return format_prompt(env_or_default('MARADMIN_PROMPT_FULL_17XX', prompt_default), bullets=bullets)
 
 
 def summarize_maradmin(
