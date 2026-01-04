@@ -6,17 +6,17 @@ MARADMIN alert script with refined summarization rules.
 Summary behavior
 - Promotion lists / selected lists / name lists:
     * HIGH priority
-    * 1–3 bullets max
+    * 1â€“3 bullets max
     * No name roll-ups
-    * Explicit: READ ASAP — name list inside
+    * Explicit: READ ASAP â€” name list inside
 - Board dates / schedule messages:
     * One-liner + key dates only
 - Board results:
-    * 1–2 bullets, tell you to read for names
+    * 1â€“2 bullets, tell you to read for names
 - 17XX / MOS focus (1701/1702/1710/1720/1721):
     * Full actionable summary (deadlines, eligibility, actions)
 - Not 17XX but relevant to configured interests (AI/cyber/space/innovation):
-    * 1–3 bullets, tagged FYI—Not 17XX
+    * 1â€“3 bullets, tagged FYIâ€”Not 17XX
 - Everything else:
     * 1 bullet + link
 
@@ -463,7 +463,7 @@ def summarize_maradmin(
         s = line.strip()
         if not s:
             continue
-        s = re.sub(r"^[\-\u2022\*]+\s*", "", s)  # strip leading '-', '•', '*'
+        s = re.sub(r"^[\-\u2022\*]+\s*", "", s)  # strip leading '-', 'â€¢', '*'
         if s:
             lines.append(s)
 
@@ -481,21 +481,21 @@ def summarize_maradmin(
 def entry_label(mode: str, maradmin_number: Optional[str]) -> str:
     num = maradmin_number or "MARADMIN"
     if mode == "read_asap":
-        return f"🚨 [PROMOTION LIST — READ ASAP] {num}"
+        return f"ðŸš¨ [PROMOTION LIST â€” READ ASAP] {num}"
     if mode == "dates_only":
         return f"[BOARD SCHEDULE] {num}"
     if mode == "brief_results":
-        return f"[RESULTS — READ FOR NAMES] {num}"
+        return f"[RESULTS â€” READ FOR NAMES] {num}"
     if mode == "full_17xx":
         return f"[17XX] {num}"
     if mode == "fyi_not_17xx":
-        return f"[FYI—Not 17XX] {num}"
+        return f"[FYIâ€”Not 17XX] {num}"
     return f"[ADMIN/LOW RELEVANCE] {num}"
 
 
 def build_slack_message(new_entries: List[Dict[str, Any]], summaries: Dict[str, Dict[str, Any]]) -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    header = f"*New MARADMINS detected* ({len(new_entries)}) — {stamp}\n"
+    header = f"*New MARADMINS detected* ({len(new_entries)}) â€” {stamp}\n"
 
     parts: List[str] = [header]
     for e in new_entries:
@@ -513,7 +513,7 @@ def build_slack_message(new_entries: List[Dict[str, Any]], summaries: Dict[str, 
 
         bullets = info.get("bullets", [])
         for b in bullets:
-            parts.append(f"• {b}")
+            parts.append(f"â€¢ {b}")
 
         parts.append("")  # spacer line
 
@@ -688,7 +688,7 @@ def main() -> int:
                         # If we had to fall back, add a quiet note only when useful.
                         if ex.response is not None and ex.response.status_code == 403:
                             bullet_lines = bullet_lines[:]
-                            bullet_lines.append("(Note: full text fetch blocked; using RSS excerpt — open link for full details.)")
+                            bullet_lines.append("(Note: full text fetch blocked; using RSS excerpt â€” open link for full details.)")
                         summaries[nid] = {
                             "mode": mode,
                             "maradmin_number": maradmin_number,
@@ -709,7 +709,7 @@ def main() -> int:
             seen_ids.add(nid)
 
         except Exception:
-            # Keep Slack clean—no stack traces or noisy errors.
+            # Keep Slack cleanâ€”no stack traces or noisy errors.
             summaries[nid] = {
                 "mode": "minimal",
                 "maradmin_number": None,

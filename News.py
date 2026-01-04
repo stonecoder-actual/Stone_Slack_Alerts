@@ -333,7 +333,7 @@ def summarize_ciso_rollup_to_bullets(
     resp = client.responses.create(model=model, instructions=instructions, input=user_input)
     out = (resp.output_text or "").strip()
     if not out:
-        out = f"• <{episode['link']}|{episode['title']}> — (No roll-up text found.)"
+        out = f"â€¢ <{episode['link']}|{episode['title']}> â€” (No roll-up text found.)"
     return out
 
 
@@ -373,7 +373,7 @@ def summarize_rcd_selected_entries(
     resp = client.responses.create(model=model, instructions=instructions, input=user_input)
     out = (resp.output_text or "").strip()
     if not out:
-        out = "• (No RealClearDefense summary produced.)"
+        out = "â€¢ (No RealClearDefense summary produced.)"
     return out
 
 
@@ -460,7 +460,7 @@ def main() -> int:
             )
 
             sections.append(
-                f"*Cyber Security Headlines* — {ep['published']}\n<{ep['link']}|Episode link>\n\n{bullets}"
+                f"*Cyber Security Headlines* â€” {ep['published']}\n<{ep['link']}|Episode link>\n\n{bullets}"
             )
 
             if not args.dry_run and ep_id:
@@ -526,7 +526,7 @@ def main() -> int:
 
         tag_line = " / ".join(sorted({t for c in candidates for t in c.get("tags", [])})) or "Filtered"
         sections.append(
-            f"*RealClearDefense (window: today+{args.rcd_window_days}d, filtered: {tag_line})* — {today.isoformat()}\n\n{rcd_bullets}"
+            f"*RealClearDefense (window: today+{args.rcd_window_days}d, filtered: {tag_line})* â€” {today.isoformat()}\n\n{rcd_bullets}"
         )
 
         if not args.dry_run:
@@ -539,7 +539,7 @@ def main() -> int:
     # Post / print + save state
     # ----------------------------
     if sections:
-        combined = ("\n\n" + ("—" * 30) + "\n\n").join(sections)
+        combined = ("\n\n" + ("â€”" * 30) + "\n\n").join(sections)
         for chunk in chunk_for_slack(combined):
             if args.dry_run:
                 print(chunk)

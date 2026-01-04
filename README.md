@@ -53,11 +53,6 @@ Python dependencies (install via pip):
    OPENAI_MODEL=gpt-4o-mini
 
    # Optional overrides
-   MARADMIN_PROMPT_BASE="You summarize USMC MARADMINS for a cyber operations audience."
-   MARADMIN_PROMPT_READ_ASAP="Provide 1-{bullets} bullets MAX..."
-   MARADMIN_PROMPT_FULL_17XX="Provide 4-{bullets} bullets..."
-   CISO_PROMPT_INSTRUCTIONS="You are a cyber news summarizer..."
-   RCD_PROMPT_INSTRUCTIONS="You summarize defense/security articles..."
 
    MARADMIN_FEED_URL=https://www.marines.mil/DesktopModules/ArticleCS/RSS.ashx?ContentType=6&Site=481&category=14336&max=10
    CISO_FEED_URL=https://rss.libsyn.com/shows/289580/destinations/2260670.xml
@@ -129,23 +124,4 @@ Repeat for `News.py` as needed (daily or multiple times per day).
 
 - OpenAI usage costs depend on model and volume. Check your account limits.
 - Do not commit `.env` or state files with secrets.
-
-## Prompt overrides (optional)
-
-To keep personal wording out of the public code, you can move prompts into `.env`.
-These accept optional format variables (for example `{bullets}`, `{max_bullets}`, `{sentences}`, `{bullets_per_article}`).
-
-MARADMIN prompt env vars:
-
-- `MARADMIN_PROMPT_BASE`
-- `MARADMIN_PROMPT_READ_ASAP`
-- `MARADMIN_PROMPT_DATES_ONLY`
-- `MARADMIN_PROMPT_BRIEF_RESULTS`
-- `MARADMIN_PROMPT_FYI_NOT_17XX`
-- `MARADMIN_PROMPT_MINIMAL`
-- `MARADMIN_PROMPT_FULL_17XX`
-
-News prompt env vars:
-
-- `CISO_PROMPT_INSTRUCTIONS`
-- `RCD_PROMPT_INSTRUCTIONS`
+- If you share a config example, use placeholders instead of real keys or URLs.
