@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 News checker -> OpenAI summary -> Slack
 
@@ -284,17 +284,6 @@ def rcd_is_in_window(local_date_iso: str, days_back: int = 1) -> bool:
 # ----------------------------
 # OpenAI summarizers
 # ----------------------------
-def env_or_default(name: str, default: str) -> str:
-    value = os.getenv(name, '').strip()
-    return value if value else default
-
-
-def format_prompt(template: str, **kwargs: Any) -> str:
-    try:
-        return template.format(**kwargs)
-    except Exception:
-        return template
-
 def summarize_ciso_rollup_to_bullets(
     client: OpenAI,
     model: str,
@@ -304,22 +293,17 @@ def summarize_ciso_rollup_to_bullets(
 ) -> str:
     max_bullets = max(1, max_bullets)
     sentences = max(1, sentences)
-    prompt_default = (
-        \"You are a cyber news summarizer.\n\"
-        \"Input is a daily roll-up containing multiple story blurbs + links (may contain HTML).\n\"
-        \"Extract distinct stories and return ONLY Slack mrkdwn bullets.\n\n\"
-        \"Format:\n\"
-        \"- <URL|Title> - summary\n\n\"
-        \"Rules:\n\"
-        f\"- Limit to {max_bullets} bullets.\n\"
-        f\"- Each bullet averages about {sentences} sentence(s).\n\"
-        \"- Deduplicate repeated items.\n\"
-        \"- Do NOT invent facts.\n\"
-    )
-    instructions = format_prompt(
-        env_or_default('CISO_PROMPT_INSTRUCTIONS', prompt_default),
-        max_bullets=max_bullets,
-        sentences=sentences,
+    instructions = (
+        "You are a cyber news summarizer.\n"
+        "Input is a daily roll-up containing multiple story blurbs + links (may contain HTML).\n"
+        "Extract distinct stories and return ONLY Slack mrkdwn bullets.\n\n"
+        "Format:\n"
+        "- <URL|Title> - summary\n\n"
+        "Rules:\n"
+        f"- Limit to {max_bullets} bullets.\n"
+        f"- Each bullet averages about {sentences} sentence(s).\n"
+        "- Deduplicate repeated items.\n"
+        "- Do NOT invent facts.\n"
     )
 
     user_input = (
@@ -333,7 +317,7 @@ def summarize_ciso_rollup_to_bullets(
     resp = client.responses.create(model=model, instructions=instructions, input=user_input)
     out = (resp.output_text or "").strip()
     if not out:
-        out = f"â€¢ <{episode['link']}|{episode['title']}> â€” (No roll-up text found.)"
+        out = f"├óÔé¼┬ó <{episode['link']}|{episode['title']}> ├óÔé¼ÔÇØ (No roll-up text found.)"
     return out
 
 
@@ -344,18 +328,14 @@ def summarize_rcd_selected_entries(
     bullets_per_article: int,
 ) -> str:
     bullets_per_article = max(5, min(bullets_per_article, 6))
-    prompt_default = (
-        \"You summarize defense/security articles for a technically-minded reader.\n\"
-        \"Return ONLY Slack mrkdwn bullets.\n\n\"
-        f\"For EACH article, output exactly {bullets_per_article} bullets:\n\"
-        \"1) - <URL|Title> - 1 sentence: what it is.\n\"
-        \"2) - Why it matters - 2 sentence (impact/implication).\n\"
-        \"3) (optional) - Watch-for - 2 sentence (trend/next step).\n\n\"
-        \"Do NOT invent facts; use only provided title/snippet.\n\"
-    )
-    instructions = format_prompt(
-        env_or_default('RCD_PROMPT_INSTRUCTIONS', prompt_default),
-        bullets_per_article=bullets_per_article,
+    instructions = (
+        "You summarize defense/security articles for a technically-minded reader.\n"
+        "Return ONLY Slack mrkdwn bullets.\n\n"
+        f"For EACH article, output exactly {bullets_per_article} bullets:\n"
+        "1) - <URL|Title> - 1 sentence: what it is.\n"
+        "2) - Why it matters - 2 sentence (impact/implication).\n"
+        "3) (optional) - Watch-for - 2 sentence (trend/next step).\n\n"
+        "Do NOT invent facts; use only provided title/snippet.\n"
     )
 
     parts = []
@@ -373,7 +353,7 @@ def summarize_rcd_selected_entries(
     resp = client.responses.create(model=model, instructions=instructions, input=user_input)
     out = (resp.output_text or "").strip()
     if not out:
-        out = "â€¢ (No RealClearDefense summary produced.)"
+        out = "├óÔé¼┬ó (No RealClearDefense summary produced.)"
     return out
 
 
@@ -460,7 +440,7 @@ def main() -> int:
             )
 
             sections.append(
-                f"*Cyber Security Headlines* â€” {ep['published']}\n<{ep['link']}|Episode link>\n\n{bullets}"
+                f"*Cyber Security Headlines* ├óÔé¼ÔÇØ {ep['published']}\n<{ep['link']}|Episode link>\n\n{bullets}"
             )
 
             if not args.dry_run and ep_id:
@@ -526,7 +506,7 @@ def main() -> int:
 
         tag_line = " / ".join(sorted({t for c in candidates for t in c.get("tags", [])})) or "Filtered"
         sections.append(
-            f"*RealClearDefense (window: today+{args.rcd_window_days}d, filtered: {tag_line})* â€” {today.isoformat()}\n\n{rcd_bullets}"
+            f"*RealClearDefense (window: today+{args.rcd_window_days}d, filtered: {tag_line})* ├óÔé¼ÔÇØ {today.isoformat()}\n\n{rcd_bullets}"
         )
 
         if not args.dry_run:
@@ -539,7 +519,7 @@ def main() -> int:
     # Post / print + save state
     # ----------------------------
     if sections:
-        combined = ("\n\n" + ("â€”" * 30) + "\n\n").join(sections)
+        combined = ("\n\n" + ("├óÔé¼ÔÇØ" * 30) + "\n\n").join(sections)
         for chunk in chunk_for_slack(combined):
             if args.dry_run:
                 print(chunk)
