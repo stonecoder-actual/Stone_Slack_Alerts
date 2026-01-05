@@ -1,3 +1,7 @@
+#Systemd
+*.service
+*.timer
+
 #Logs
 *.json
 
