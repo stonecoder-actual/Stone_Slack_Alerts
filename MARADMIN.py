@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#Update Check
 """MARADMIN checker -> OpenAI summary -> Slack (refined rules)
 
 MARADMIN alert script with refined summarization rules.
