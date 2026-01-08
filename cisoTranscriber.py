@@ -6,18 +6,21 @@ Checks Libsyn each morning for a new CISO Series Cybersecurity Headlines MP3,
 downloads it, transcribes it via OpenAI, then summarizes it.
 
 Requires:
-  pip install openai requests
+  pip install openai requests python-dotenv
 Env:
   export OPENAI_API_KEY="..."
+  export OPENAI_MODEL="gpt-4o-mini"  # optional
 """
 
 import argparse
 import datetime as dt
 import json
 import os
+import sys
 from pathlib import Path
 
 import requests
+from dotenv import load_dotenv
 from openai import OpenAI
 
 
@@ -30,6 +33,7 @@ FILENAME_PATTERNS = [
 
 DEFAULT_STATE_PATH = Path("ciso_state.json")
 DEFAULT_OUT_DIR = Path("ciso_downloads")
+DEFAULT_MODEL = "gpt-4o-mini"
 
 
 def build_candidate_urls(day: dt.date) -> list[str]:
@@ -66,7 +70,10 @@ def choose_available_audio_url(day: dt.date) -> str | None:
 
 def load_state(path: Path) -> dict:
     if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return {"processed": {}}
     return {"processed": {}}
 
 
@@ -95,10 +102,10 @@ def transcribe_audio(client: OpenAI, audio_path: Path) -> str:
     return text
 
 
-def summarize_transcript(client: OpenAI, transcript: str) -> str:
+def summarize_transcript(client: OpenAI, model: str, transcript: str) -> str:
     # Responses API is recommended for new projects. :contentReference[oaicite:3]{index=3}
     resp = client.responses.create(
-        model="gpt-5.2-mini",
+        model=model,
         input=[
             {"role": "system", "content": "You summarize cybersecurity podcast transcripts accurately and concisely."},
             {"role": "user", "content": (
@@ -114,6 +121,7 @@ def summarize_transcript(client: OpenAI, transcript: str) -> str:
 
 
 def main():
+    load_dotenv()
     ap = argparse.ArgumentParser()
     ap.add_argument("--days-back", type=int, default=2,
                     help="Check today, and up to N days back (default 2). Useful if they post late.")
@@ -150,7 +158,13 @@ def main():
     if args.dry_run:
         return
 
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not openai_key:
+        print("Missing OPENAI_API_KEY.", file=sys.stderr)
+        return 2
+
+    model = os.getenv("OPENAI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    client = OpenAI(api_key=openai_key)
 
     # Pick a stable local filename based on the day we found
     audio_path = args.outdir / f"CSH_{chosen_day.strftime('%Y%m%d')}.mp3"
@@ -165,7 +179,7 @@ def main():
     transcript_path.write_text(transcript, encoding="utf-8")
 
     print("Summarizing...")
-    summary = summarize_transcript(client, transcript)
+    summary = summarize_transcript(client, model, transcript)
     summary_path.write_text(summary, encoding="utf-8")
 
     processed[chosen_url] = {
