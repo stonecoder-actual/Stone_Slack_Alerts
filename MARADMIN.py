@@ -83,19 +83,38 @@ PRIORITY_TOPICS = [
     "cyber",
     "cybersecurity",
     "zero trust",
-    "rmf",
-    "ato",
+    "cyber command",
+    "offensive cyber",
+    "defensive cyber",
+    "cyber operations",
+    "national security agency",
+    "nsa",
     "dodin",
     "uscybercom",
     "marforcyber",
     "jfhq-dodin",
-    "cmf",
+    "cmnf",
     "oco",
     "dco",
+    "electronic warfare",
+    "ew",
+    "information operations",
+    "io",
+    "infosec",
+    "information security",
+    "network defense",
+    "red team",
     # Space
     "space",
     "satcom",
     "pnt",
+    "gps",
+    "space command",
+    "spacex",
+    "national reconnaissance office",
+    "nro",
+    "starlink",
+    "space force",
     # Innovation
     "innovation",
     "experimentation",
@@ -365,11 +384,11 @@ def format_prompt(template: str, **kwargs: Any) -> str:
 
 def build_llm_instructions(mode: str, bullets: int) -> str:
     base_default = (
-        "You summarize USMC MARADMINS for a cyber operations audience.\n"
+        "You summarize USMC MARADMINS for a Marine cyberspace warfare officer.\n"
         "Output ONLY bullet points (no headings, no intro).\n"
         "Do NOT invent details; use only the provided text. If unknown, say 'Not stated'.\n"
-        "Keep bullets tight: 1 sentence where possible, max 2 sentences.\n"
-        "Prefer concrete dates/deadlines and required actions.\n"
+        "Keep bullets tight: max 2 sentences.\n"
+        "focus on: concrete dates/deadlines, required actions, who is affected by the MARADMIN, and who is eligible.\n"
     )
     base = env_or_default('MARADMIN_PROMPT_BASE', base_default)
 
@@ -389,7 +408,7 @@ def build_llm_instructions(mode: str, bullets: int) -> str:
             base
             + "This is a promotion selection board schedule / dates message.\n"
             "- First bullet: a one-sentence summary.\n"
-            "- Remaining bullets: key dates only (board correspondence due dates and convening dates).\n"
+            "- Remaining bullets: key dates (board correspondence due dates and convening dates).\n"
             + f"Provide up to {bullets} bullets total.\n"
             "No extra commentary.\n"
         )
