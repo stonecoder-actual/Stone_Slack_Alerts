@@ -50,7 +50,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 
-DEFAULT_MODEL = "gpt-5.2-mini"
+DEFAULT_MODEL = "gpt-5-mini"
 DEFAULT_STATE_FILE = ".maradmin_state.json"
 
 DEFAULT_MARADMIN_FEED_URL = (

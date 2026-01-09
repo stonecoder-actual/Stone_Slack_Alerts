@@ -46,7 +46,7 @@ from openai import OpenAI
 # ----------------------------
 # Defaults / Config
 # ----------------------------
-DEFAULT_MODEL = "gpt-5.2-mini"
+DEFAULT_MODEL = "gpt-5-mini"
 DEFAULT_STATE_FILE = "news_state.json"
 
 DEFAULT_CISO_FEED_URL = "https://rss.libsyn.com/shows/289580/destinations/2260670.xml"
