@@ -1,24 +1,13 @@
 #!/usr/bin/env python3
-"""MARADMIN checker -> OpenAI summary -> Slack (refined rules)
+"""MARADMIN checker -> OpenAI summary -> Slack (single summary mode)
 
-MARADMIN alert script with refined summarization rules.
+MARADMIN alert script with a single, consistent summarization lens.
 
 Summary behavior
-- Promotion lists / selected lists / name lists:
-    * HIGH priority
-    * 1-3 bullets max
-    * No name roll-ups
-    * Explicit: READ ASAP - name list inside
-- Board dates / schedule messages:
-    * One-liner + key dates only
-- Board results:
-    * 1-2 bullets, tell you to read for names
-- 17XX / MOS focus (1701/1702/1710/1720/1721):
-    * Full actionable summary (deadlines, eligibility, actions)
-- Not 17XX but relevant to configured interests (AI/cyber/space/innovation):
-    * 1-3 bullets, tagged FYI-Not 17XX
-- Everything else:
-    * 1 bullet + link
+- Always summarize as a Marine cyberspace warfare officer would.
+- Keep key dates, deadlines, eligibility, and ineligibility details.
+- Include a short recommendation.
+- Do not list names; tell the reader to open the MARADMIN for names.
 
 Feeds / state
 - Pulls Marines.mil Messages RSS feed
@@ -41,7 +30,7 @@ import os
 import re
 import sys
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 import feedparser
 import requests
@@ -62,101 +51,12 @@ SLACK_MAX_CHARS = 35000  # buffer under Slack's max
 
 
 # ----------------------------
-# Refined priorities
+# Summary behavior
 # ----------------------------
 
-# High-priority MOSs
-HIGH_MOS: Set[str] = {"1701", "1702", "1710", "1720", "1721"}
-
-# Priority interest topics (allow short FYI summaries even if not 17XX)
-PRIORITY_TOPICS = [
-    # AI/ML
-    "artificial intelligence",
-    "ai",
-    "machine learning",
-    "ml",
-    "llm",
-    "data science",
-    "data engineering",
-    # Cyberspace/Cybersecurity
-    "cyberspace",
-    "cyber",
-    "cybersecurity",
-    "zero trust",
-    "cyber command",
-    "offensive cyber",
-    "defensive cyber",
-    "cyber operations",
-    "national security agency",
-    "nsa",
-    "dodin",
-    "uscybercom",
-    "marforcyber",
-    "jfhq-dodin",
-    "cmnf",
-    "oco",
-    "dco",
-    "electronic warfare",
-    "ew",
-    "information operations",
-    "io",
-    "infosec",
-    "information security",
-    "network defense",
-    "red team",
-    # Space
-    "space",
-    "satcom",
-    "pnt",
-    "gps",
-    "space command",
-    "spacex",
-    "national reconnaissance office",
-    "nro",
-    "starlink",
-    "space force",
-    # Innovation
-    "innovation",
-    "experimentation",
-    "pilot",
-    "modernization",
-    "software factory",
-]
-
-# Keyword buckets for classification
-KW_PROMOTION_LIST = [
-    "officer promotions",
-    "enlisted promotions",
-    "promotion authority",
-    "selected for promotion",
-    "promotion selection",
-    "promotion list",
-    "approved for promotion",
-    "to the grade of",
-    "promotions for",
-]
-
-KW_RESULTS = [
-    "results",
-    "selection list",
-    "selected list",
-    "board results",
-    "approved selection",
-]
-
-KW_BOARD_SCHEDULE = [
-    "promotion selection boards",
-    "selection boards",
-    "board will convene",
-    "convening date",
-    "board correspondence",
-    "selection board",
-    "board schedule",
-    "projected",
-]
+SUMMARY_BULLETS = 5
 
 # Regex helpers
-MOS_RE = re.compile(r"\b(1[0-9]{3})\b")  # 4-digit MOS like 1721, 2651
 MARADMIN_NUM_RE = re.compile(r"\bMARADMIN\s+(\d{1,4}/\d{2})\b", re.IGNORECASE)
 
 
@@ -302,73 +202,13 @@ def extract_message_text(html: str) -> str:
 
 
 # ----------------------------
-# Classification + mode selection
+# OpenAI summary
 # ----------------------------
-
-def contains_any(text: str, phrases: List[str]) -> bool:
-    t = (text or "").lower()
-    return any(p.lower() in t for p in phrases)
-
-
-def extract_mos_codes(text: str) -> Set[str]:
-    return set(MOS_RE.findall(text or ""))
-
-
-def mos_relevance(text: str) -> Tuple[bool, List[str]]:
-    """Returns (is_17xx_or_high_mos, list_of_high_mos_hits)."""
-    mos = extract_mos_codes(text)
-    high_hits = sorted(mos.intersection(HIGH_MOS))
-    any_17xx = any(m.startswith("17") for m in mos)
-    return (bool(high_hits) or any_17xx), high_hits
-
-
-def classify_maradmin(title: str, body: str) -> str:
-    """Coarse classification."""
-    text = f"{title}\n{body}".lower()
-
-    # Promotion list / selected list / name list: prioritize + READ ASAP
-    if contains_any(text, KW_PROMOTION_LIST) and (contains_any(text, KW_RESULTS) or "promot" in text):
-        return "PROMOTION_LIST_READ_ASAP"
-
-    # Board schedule / board correspondence
-    if contains_any(text, KW_BOARD_SCHEDULE) and ("board" in text or "selection" in text):
-        return "BOARD_DATES_ONE_LINER"
-
-    # Results (non-promo-list)
-    if contains_any(text, KW_RESULTS):
-        return "RESULTS_BRIEF"
-
-    return "GENERAL"
-
-
-def choose_summary_mode(category: str, title: str, body: str) -> Dict[str, Any]:
-    """Decide summary mode + bullet count based on configured preferences."""
-    text = f"{title}\n{body}"
-    is_17xx, _high_hits = mos_relevance(text)
-    is_priority_topic = contains_any(text, PRIORITY_TOPICS)
-
-    if category == "PROMOTION_LIST_READ_ASAP":
-        return {"mode": "read_asap", "bullets": 3}
-    if category == "BOARD_DATES_ONE_LINER":
-        return {"mode": "dates_only", "bullets": 14}
-    if category == "RESULTS_BRIEF":
-        return {"mode": "brief_results", "bullets": 2}
-
-    if is_17xx:
-        return {"mode": "full_17xx", "bullets": 6}
-    if is_priority_topic:
-        return {"mode": "fyi_not_17xx", "bullets": 3}
-    return {"mode": "minimal", "bullets": 1}
-
 
 def extract_maradmin_number(title: str, body: str) -> Optional[str]:
     m = MARADMIN_NUM_RE.search(f"{title}\n{body}")
     return m.group(1) if m else None
 
-
-# ----------------------------
-# OpenAI summary
-# ----------------------------
 
 def env_or_default(name: str, default: str) -> str:
     value = os.getenv(name, '').strip()
@@ -382,70 +222,24 @@ def format_prompt(template: str, **kwargs: Any) -> str:
         return template
 
 
-def build_llm_instructions(mode: str, bullets: int) -> str:
+def build_llm_instructions(bullets: int) -> str:
     base_default = (
         "You summarize USMC MARADMINS for a Marine cyberspace warfare officer.\n"
         "Output ONLY bullet points (no headings, no intro).\n"
         "Do NOT invent details; use only the provided text. If unknown, say 'Not stated'.\n"
         "Keep bullets tight: max 2 sentences.\n"
-        "focus on: concrete dates/deadlines, required actions, who is affected by the MARADMIN, and who is eligible.\n"
+        "Do NOT omit dates/deadlines, eligibility, or ineligibility details when stated.\n"
+        "Focus on: concrete dates/deadlines, required actions, who is affected, and who is eligible or ineligible.\n"
+        "Include a final bullet starting with 'Recommendation:' tailored to a Marine Corps cyberspace warfare officer.\n"
     )
     base = env_or_default('MARADMIN_PROMPT_BASE', base_default)
 
-    if mode == 'read_asap':
-        prompt_default = (
-            base
-            + f"Provide 1-{bullets} bullets MAX.\n"
-            "This is a PROMOTION/SELECTION LIST with names.\n"
-            "- Do NOT summarize or list names.\n"
-            "- MUST include 'READ ASAP - name list inside.'\n"
-            "Focus on: what rank(s), what population (Active/AR/Reserve), what month/timeframe, and any admin notes.\n"
-        )
-        return format_prompt(env_or_default('MARADMIN_PROMPT_READ_ASAP', prompt_default), bullets=bullets)
-
-    if mode == 'dates_only':
-        prompt_default = (
-            base
-            + "This is a promotion selection board schedule / dates message.\n"
-            "- First bullet: a one-sentence summary.\n"
-            "- Remaining bullets: key dates (board correspondence due dates and convening dates).\n"
-            + f"Provide up to {bullets} bullets total.\n"
-            "No extra commentary.\n"
-        )
-        return format_prompt(env_or_default('MARADMIN_PROMPT_DATES_ONLY', prompt_default), bullets=bullets)
-
-    if mode == 'brief_results':
-        prompt_default = (
-            base
-            + f"Provide 1-{bullets} bullets MAX.\n"
-            "This is BOARD RESULTS.\n"
-            "- Do NOT summarize names.\n"
-            "- Tell the reader to open/read the MARADMIN for names.\n"
-        )
-        return format_prompt(env_or_default('MARADMIN_PROMPT_BRIEF_RESULTS', prompt_default), bullets=bullets)
-
-    if mode == 'fyi_not_17xx':
-        prompt_default = (
-            base
-            + f"Provide 1-{bullets} bullets MAX.\n"
-            "Tag the first bullet with 'FYI-Not 17XX'.\n"
-            "Focus on: what it is, who it applies to, and any deadline/timeline.\n"
-        )
-        return format_prompt(env_or_default('MARADMIN_PROMPT_FYI_NOT_17XX', prompt_default), bullets=bullets)
-
-    if mode == 'minimal':
-        prompt_default = base + "Provide exactly 1 bullet.\n"
-        return format_prompt(env_or_default('MARADMIN_PROMPT_MINIMAL', prompt_default), bullets=bullets)
-
-    # full_17xx
     prompt_default = (
         base
-        + f"Provide 4-{bullets} bullets.\n"
-        "This MARADMIN is relevant to 17XX / MOS 1701/1702/1710/1720/1721.\n"
-        "If the MARADMIN lists multiple MOSs, only include details relevant to 17XX / those MOSs.\n"
-        "Emphasize deadlines/timelines, eligibility, and required actions.\n"
+        + f"Provide 3-{bullets} bullets total.\n"
+        "If the MARADMIN lists names, do NOT summarize names; tell the reader to open the MARADMIN for names.\n"
     )
-    return format_prompt(env_or_default('MARADMIN_PROMPT_FULL_17XX', prompt_default), bullets=bullets)
+    return format_prompt(env_or_default('MARADMIN_PROMPT_STANDARD', prompt_default), bullets=bullets)
 
 
 def summarize_maradmin(
@@ -455,10 +249,9 @@ def summarize_maradmin(
     link: str,
     published: str,
     maradmin_text: str,
-    mode: str,
     bullets: int,
 ) -> List[str]:
-    instructions = build_llm_instructions(mode=mode, bullets=bullets)
+    instructions = build_llm_instructions(bullets=bullets)
 
     user_input = (
         f"Title: {title}\n"
@@ -497,19 +290,9 @@ def summarize_maradmin(
 # Slack formatting
 # ----------------------------
 
-def entry_label(mode: str, maradmin_number: Optional[str]) -> str:
+def entry_label(maradmin_number: Optional[str]) -> str:
     num = maradmin_number or "MARADMIN"
-    if mode == "read_asap":
-        return f"[PROMOTION LIST - READ ASAP] {num}"
-    if mode == "dates_only":
-        return f"[BOARD SCHEDULE] {num}"
-    if mode == "brief_results":
-        return f"[RESULTS - READ FOR NAMES] {num}"
-    if mode == "full_17xx":
-        return f"[17XX] {num}"
-    if mode == "fyi_not_17xx":
-        return f"[FYI-Not 17XX] {num}"
-    return f"[ADMIN/LOW RELEVANCE] {num}"
+    return f"[MARADMIN] {num}"
 
 
 def build_slack_message(new_entries: List[Dict[str, Any]], summaries: Dict[str, Dict[str, Any]]) -> str:
@@ -524,10 +307,9 @@ def build_slack_message(new_entries: List[Dict[str, Any]], summaries: Dict[str, 
         nid = normalize_id(e)
 
         info = summaries.get(nid, {})
-        mode = info.get("mode", "minimal")
         maradmin_number = info.get("maradmin_number")
 
-        label = entry_label(mode=mode, maradmin_number=maradmin_number)
+        label = entry_label(maradmin_number=maradmin_number)
         parts.append(f"*<{link}|{title}>*  _(Published: {published})_\n_{label}_")
 
         bullets = info.get("bullets", [])
@@ -567,7 +349,7 @@ def post_to_slack(webhook_url: str, text: str) -> None:
 # ----------------------------
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="MARADMIN alert with refined summarization rules")
+    p = argparse.ArgumentParser(description="MARADMIN alert with a single summary mode")
     p.add_argument("--feed-url", default=os.getenv("MARADMIN_FEED_URL", DEFAULT_MARADMIN_FEED_URL))
     p.add_argument("--model", default=os.getenv("OPENAI_MODEL", DEFAULT_MODEL))
     p.add_argument("--state-file", default=DEFAULT_STATE_FILE)
@@ -640,20 +422,16 @@ def main() -> int:
 
             maradmin_number = extract_maradmin_number(title, maradmin_text)
 
-            category = classify_maradmin(title, maradmin_text)
-            decision = choose_summary_mode(category, title, maradmin_text)
-            mode = decision["mode"]
-            bullets = int(decision["bullets"])
+            bullets = SUMMARY_BULLETS
 
             if args.show_raw:
                 print(f"\n--- {title} ---")
                 print(f"Link: {link}")
-                print(f"Mode: {mode} | Category: {category} | MARADMIN: {maradmin_number or 'Not stated'}")
+                print(f"MARADMIN: {maradmin_number or 'Not stated'}")
                 print(maradmin_text[:4000])
                 summaries[nid] = {
-                    "mode": mode,
                     "maradmin_number": maradmin_number,
-                    "bullets": ["(show-raw enabled; not summarized)", f"Mode: {mode}", "Open the link to read."],
+                    "bullets": ["(show-raw enabled; not summarized)", "Open the link to read."],
                 }
             else:
                 bullet_lines = summarize_maradmin(
@@ -663,11 +441,9 @@ def main() -> int:
                     link=link,
                     published=published,
                     maradmin_text=maradmin_text,
-                    mode=mode,
                     bullets=bullets,
                 )
                 summaries[nid] = {
-                    "mode": mode,
                     "maradmin_number": maradmin_number,
                     "bullets": bullet_lines,
                 }
@@ -682,16 +458,12 @@ def main() -> int:
                 try:
                     maradmin_text = fallback
                     maradmin_number = extract_maradmin_number(title, maradmin_text)
-                    category = classify_maradmin(title, maradmin_text)
-                    decision = choose_summary_mode(category, title, maradmin_text)
-                    mode = decision["mode"]
-                    bullets = int(decision["bullets"])
+                    bullets = SUMMARY_BULLETS
 
                     if args.show_raw:
                         summaries[nid] = {
-                            "mode": mode,
                             "maradmin_number": maradmin_number,
-                            "bullets": ["(show-raw enabled; using RSS summary)", f"Mode: {mode}", "Open the link to read."],
+                            "bullets": ["(show-raw enabled; using RSS summary)", "Open the link to read."],
                         }
                     else:
                         bullet_lines = summarize_maradmin(
@@ -701,7 +473,6 @@ def main() -> int:
                             link=link,
                             published=published,
                             maradmin_text=maradmin_text,
-                            mode=mode,
                             bullets=bullets,
                         )
                         # If we had to fall back, add a quiet note only when useful.
@@ -709,19 +480,16 @@ def main() -> int:
                             bullet_lines = bullet_lines[:]
                             bullet_lines.append("(Note: full text fetch blocked; using RSS excerpt - open link for full details.)")
                         summaries[nid] = {
-                            "mode": mode,
                             "maradmin_number": maradmin_number,
                             "bullets": bullet_lines,
                         }
                 except Exception:
                     summaries[nid] = {
-                        "mode": "minimal",
                         "maradmin_number": None,
                         "bullets": ["Open the link to read this MARADMIN."],
                     }
             else:
                 summaries[nid] = {
-                    "mode": "minimal",
                     "maradmin_number": None,
                     "bullets": ["Open the link to read this MARADMIN."],
                 }
@@ -730,7 +498,6 @@ def main() -> int:
         except Exception:
             # Keep Slack clean - no stack traces or noisy errors.
             summaries[nid] = {
-                "mode": "minimal",
                 "maradmin_number": None,
                 "bullets": ["Open the link to read this MARADMIN."],
             }
